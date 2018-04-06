@@ -5,7 +5,7 @@ import gc
 import transformations
 import tools
 import random
-
+import pickle
 
 class StatefulDataGen(object):
 
@@ -25,7 +25,7 @@ class StatefulDataGen(object):
         total_num_examples = 0
 
         for i_seq, seq in enumerate(sequences):
-            seq_data = pykitti.odometry(config.dataset_path, seq, frames=frames[i_seq])
+            seq_data = pykitti.odometry(config.base_dir, seq, frames=frames[i_seq])
             num_frames = len(seq_data.poses)
 
             # less than timesteps number of frames will be discarded
@@ -49,16 +49,32 @@ class StatefulDataGen(object):
                 deleted_frames -= self.truncated_seq_sizes[i]
 
         # for storing all training
-        self.input_frames = np.zeros(
-            [total_timesteps, self.cfg.batch_size, self.cfg.input_channels, self.cfg.input_height,
-             self.cfg.input_width],
-            dtype=np.uint8)
+        if self.cfg.data_source is "camera":
+            self.input_frames = np.zeros(
+                [total_timesteps, self.cfg.batch_size, self.cfg.input_channels, self.cfg.input_height,
+                self.cfg.input_width],
+                dtype=np.uint8)
+        elif self.cfg.data_source is "lidar":
+            self.range_input_frames = np.zeros([total_timesteps, self.cfg.batch_size, 1, self.cfg.input_height,
+                self.cfg.input_width],
+                dtype=np.float16)
+            self.intensity_input_frames = np.zeros(
+                [total_timesteps, self.cfg.batch_size, 1, self.cfg.input_height,
+                self.cfg.input_width],
+                dtype=np.uint8)
+        else:
+            raise ValueError('Invalid data source specified')
+
         poses_wrt_g = np.zeros([total_timesteps, self.cfg.batch_size, 4, 4], dtype=np.float32)  # ground truth poses
 
         num_image_loaded = 0
         for i_seq, seq in enumerate(sequences):
-            seq_data = pykitti.odometry(config.dataset_path, seq, frames=frames[i_seq])
+            seq_data = pykitti.odometry(config.base_dir, seq, frames=frames[i_seq])
             length = self.truncated_seq_sizes[i_seq]
+
+            if self.cfg.data_source is "lidar":
+                self.range_file = open(self.cfg.pickle_dir + seq + "_range.pik", "rb")
+                self.intensity_file = open(self.cfg.pickle_dir + seq + "_intensity.pik", "rb")
 
             i = -1
             j = -1
@@ -71,14 +87,20 @@ class StatefulDataGen(object):
                 j = num_image_loaded // total_timesteps
 
                 # swap axis to channels first
-                img = seq_data.get_cam0(i_img)
-                img = img.resize((self.cfg.input_width, self.cfg.input_height))
-                img = np.array(img)
-                img = np.reshape(img, [img.shape[0], img.shape[1], self.cfg.input_channels])
-                img = np.moveaxis(np.array(img), 2, 0)
-                pose = seq_data.poses[i_img]
+                if self.cfg.data_source is "camera":
+                    img = seq_data.get_cam0(i_img)
+                    img = img.resize((self.cfg.input_width, self.cfg.input_height))
+                    img = np.array(img)
+                    img = np.reshape(img, [img.shape[0], img.shape[1], self.cfg.input_channels])
+                    img = np.moveaxis(np.array(img), 2, 0)
+                    pose = seq_data.poses[i_img]
+                    self.input_frames[i, j] = img
+                elif self.cfg.data_source is "lidar":
+                    rng_image = pickle.load(self.range_file)
+                    int_image = pickle.load(self.intensity_file)
+                    self.range_input_frames[i, j] = rng_image
+                    self.intensity_input_frames[i, j] = int_image
 
-                self.input_frames[i, j] = img
                 poses_wrt_g[i, j] = pose
                 num_image_loaded += 1
 
@@ -87,7 +109,12 @@ class StatefulDataGen(object):
                 if i_img != 0 and i_img != length - 1 and i_img % self.cfg.timesteps == 0:
                     i = num_image_loaded % total_timesteps
                     j = num_image_loaded // total_timesteps
-                    self.input_frames[i, j] = img
+                    if self.cfg.data_source is "camera":
+                        self.input_frames[i, j] = img
+                    elif self.cfg.data_source is "lidar":
+                        self.range_input_frames[i, j] = rng_image
+                        self.intensity_input_frames[i, j] = int_image
+
                     poses_wrt_g[i, j] = pose
 
                     num_image_loaded += 1
@@ -134,8 +161,16 @@ class StatefulDataGen(object):
         i_b = self.curr_batch_idx
         n = self.cfg.timesteps + 1  # number of frames in an example
         # slice a batch from huge matrix of training data
-        batch = self.input_frames[i_b * n: (i_b + 1) * n, :, :, :, :]
-        batch = np.divide(batch, 255.0, dtype=np.float32)  # ensure float32
+        if self.cfg.data_source is "camera":
+            batch = self.input_frames[i_b * n: (i_b + 1) * n, :, :, :, :]
+            batch = np.divide(batch, 255.0, dtype=np.float32)  # ensure float32
+        elif self.cfg.data_source is "lidar":
+            batch = np.zeros([n+1, self.cfg.batch_size, self.cfg.input_channels, self.cfg.input_height,
+                self.cfg.input_width], dtype=np.float32)
+            batch[:,:,0,:,:] = self.range_input_frames[i_b * n: (i_b + 1) * n, :, :, :, :]
+            batch[:,:,1,:,:] = np.divide(self.range_input_frames[i_b * n: (i_b + 1) * n, :, :, :, :], 255.0, dtype=np.float32)
+        else:
+            raise ValueError("Invalid data source type")
 
         se3_ground_truth = self.se3_ground_truth[i_b * n + 1: (i_b + 1) * n, :, :]
         fc_ground_truth = self.fc_ground_truth[i_b * n + 1: (i_b + 1) * n, :, :]
@@ -158,8 +193,16 @@ class StatefulDataGen(object):
         i_b = self.unused_batch_indices.pop()
         n = self.cfg.timesteps + 1  # number of frames in an example
         # slice a batch from huge matrix of training data
-        batch = self.input_frames[i_b * n: (i_b + 1) * n, :, :, :, :]
-        batch = np.divide(batch, 255.0, dtype=np.float32)  # ensure float32
+        if self.cfg.data_source is "camera":
+            batch = self.input_frames[i_b * n: (i_b + 1) * n, :, :, :, :]
+            batch = np.divide(batch, 255.0, dtype=np.float32)  # ensure float32
+        elif self.cfg.data_source is "lidar":
+            batch = np.zeros([n+1, self.cfg.batch_size, self.cfg.input_channels, self.cfg.input_height,
+                self.cfg.input_width], dtype=np.float32)
+            batch[:,:,0,:,:] = self.range_input_frames[i_b * n: (i_b + 1) * n, :, :, :, :]
+            batch[:,:,1,:,:] = np.divide(self.range_input_frames[i_b * n: (i_b + 1) * n, :, :, :, :], 255.0, dtype=np.float32)
+        else:
+            raise ValueError("Invalid data source type")
 
         se3_ground_truth = self.se3_ground_truth[i_b * n + 1: (i_b + 1) * n, :, :]
         fc_ground_truth = self.fc_ground_truth[i_b * n + 1: (i_b + 1) * n, :, :]

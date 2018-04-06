@@ -7,7 +7,9 @@ class TrainConfigs(object):
     input_height = 0
     input_channels = 0
 
-    dataset_path = "/home/cs4li/Dev/KITTI/dataset/"
+    data_source = "camera"
+
+    base_dir = "/home/cs4li/Dev/KITTI/dataset/"
 
 class SeqTrainConfigs(TrainConfigs):
     timesteps = 12
@@ -34,6 +36,9 @@ class SeqTrainLidarConfigs(TrainConfigs):
 
     num_epochs = 20
     k = 10
+
+    pickle_dir = "/home/bapskiko/git/end_to_end_visual_odometry/pickles/"
+    data_source = "lidar"
 
 class PairTrainConfigs(TrainConfigs):
     timesteps = 1
