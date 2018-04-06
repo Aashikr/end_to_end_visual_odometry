@@ -7,6 +7,8 @@ class TrainConfigs(object):
     input_height = 0
     input_channels = 0
 
+    dataset_path = "/home/cs4li/Dev/KITTI/dataset/"
+
 class SeqTrainConfigs(TrainConfigs):
     timesteps = 12
     batch_size = 1
@@ -20,6 +22,18 @@ class SeqTrainConfigs(TrainConfigs):
     num_epochs = 20
     k = 10
 
+class SeqTrainLidarConfigs(TrainConfigs):
+    timesteps = 12
+    batch_size = 1
+    input_width = 1152
+    input_height = 64
+    input_channels = 2
+
+    lstm_size = 256
+    lstm_layers = 2
+
+    num_epochs = 20
+    k = 10
 
 class PairTrainConfigs(TrainConfigs):
     timesteps = 1

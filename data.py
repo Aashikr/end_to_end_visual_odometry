@@ -12,7 +12,7 @@ class StatefulDataGen(object):
     # Note some frames at the end of the sequence, and the
     # last sequence might be omitted to fit the examples
     # of timesteps x batch size8
-    def __init__(self, config, base_dir, sequences, frames=None):
+    def __init__(self, config, sequences, frames=None):
         self.truncated_seq_sizes = []
         self.end_of_sequence_indices = []
         self.curr_batch_idx = 0
@@ -25,7 +25,7 @@ class StatefulDataGen(object):
         total_num_examples = 0
 
         for i_seq, seq in enumerate(sequences):
-            seq_data = pykitti.odometry(base_dir, seq, frames=frames[i_seq])
+            seq_data = pykitti.odometry(config.dataset_path, seq, frames=frames[i_seq])
             num_frames = len(seq_data.poses)
 
             # less than timesteps number of frames will be discarded
@@ -57,7 +57,7 @@ class StatefulDataGen(object):
 
         num_image_loaded = 0
         for i_seq, seq in enumerate(sequences):
-            seq_data = pykitti.odometry(base_dir, seq, frames=frames[i_seq])
+            seq_data = pykitti.odometry(config.dataset_path, seq, frames=frames[i_seq])
             length = self.truncated_seq_sizes[i_seq]
 
             i = -1
