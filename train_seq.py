@@ -8,7 +8,7 @@ import tensorflow as tf
 import numpy as np
 import time
 
-cfg = config.SeqTrainConfigs
+cfg = config.SeqTrainLidarConfigs
 
 tools.printf("Loading training data...")
 train_data_gen = data.StatefulDataGen(cfg,

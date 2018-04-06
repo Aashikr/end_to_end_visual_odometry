@@ -86,6 +86,7 @@ class StatefulDataGen(object):
                 i = num_image_loaded % total_timesteps
                 j = num_image_loaded // total_timesteps
 
+                pose = seq_data.poses[i_img]
                 # swap axis to channels first
                 if self.cfg.data_source is "camera":
                     img = seq_data.get_cam0(i_img)
@@ -93,7 +94,6 @@ class StatefulDataGen(object):
                     img = np.array(img)
                     img = np.reshape(img, [img.shape[0], img.shape[1], self.cfg.input_channels])
                     img = np.moveaxis(np.array(img), 2, 0)
-                    pose = seq_data.poses[i_img]
                     self.input_frames[i, j] = img
                 elif self.cfg.data_source is "lidar":
                     rng_image = pickle.load(self.range_file)
@@ -124,6 +124,10 @@ class StatefulDataGen(object):
             # If the batch has the last frame in a sequence, the following frame
             # in the next batch must have a reset for lstm state
             self.end_of_sequence_indices.append((i + 1, j,))
+
+            if self.cfg.data_source is "lidar":
+                self.range_file.close()
+                self.intensity_file.close()
 
         # make sure the all of examples are fully loaded, just to detect bugs
         assert (num_image_loaded == total_timesteps * self.cfg.batch_size)
