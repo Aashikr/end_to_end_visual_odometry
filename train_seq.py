@@ -63,6 +63,8 @@ def calc_val_loss(sess, i_epoch, losses_log):
 
         curr_lstm_states = data.reset_select_lstm_state(curr_lstm_states, reset_state)
 
+        tools.visualize_batch(batch_data)
+
         _se3_losses, _curr_lstm_states = sess.run(
             [se3_losses, lstm_states, ],
             feed_dict={
@@ -87,18 +89,18 @@ tf_best_saver = tf.train.Saver(max_to_keep=2)
 
 restore_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, "^(cnn_layer|rnn_layer|fc_layer).*")
 tf_restore_saver = tf.train.Saver(restore_variables)
-restore_model_file = None
-# restore_model_file = "/home/cs4li/Dev/end_to_end_visual_odometry/results/" \
-#                      "train_seq_20180405-17-40-26_seq_all_cnn_init_stopped_at_epoch_60_no_covar/" \
-#                      "model_epoch_checkpoint-55"
+# restore_model_file = None
+restore_model_file = "/home/cs4li/Dev/end_to_end_visual_odometry/results/" \
+                     "train_seq_20180406-17-59-50_seq_all_cnn_init_cosine_dist/" \
+                     "model_epoch_checkpoint-49"
 
 # just for restoring pre trained cnn weights
 cnn_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, "^cnn_layer.*")
 cnn_init_tf_saver = tf.train.Saver(cnn_variables)
-# cnn_init_model_file = None
-cnn_init_model_file = "/home/cs4li/Dev/end_to_end_visual_odometry/results/" \
-                      "train_pair_20180402-12-21-24_seq_00_to_05_randomized_dropout(0.9, 0.8, 0.7)/" \
-                      "model_best_val_checkpoint"
+cnn_init_model_file = None
+# cnn_init_model_file = "/home/cs4li/Dev/end_to_end_visual_odometry/results/" \
+#                       "train_pair_20180402-12-21-24_seq_00_to_05_randomized_dropout(0.9, 0.8, 0.7)/" \
+#                       "model_best_val_checkpoint"
 
 # =================== TRAINING ========================
 # config = tf.ConfigProto(allow_soft_placement=True)
@@ -109,6 +111,7 @@ with tf.Session(config=None) as sess:
         cnn_init_tf_saver.restore(sess, cnn_init_model_file)
     elif restore_model_file:
         tools.printf("Restoring model weights from %s..." % restore_model_file)
+        sess.run(tf.global_variables_initializer())
         tf_restore_saver.restore(sess, restore_model_file)
     else:
         tools.printf("Initializing variables...")
@@ -160,9 +163,9 @@ with tf.Session(config=None) as sess:
 
             # Run training session
             _trainer, _curr_lstm_states, _total_losses, _fc_losses, _se3_losses, \
-            _fc_xyz_losses, _fc_ypr_losses, _se3_xyz_losses, _se3_quat_losses = sess.run(
+            _fc_xyz_losses, _fc_ypr_losses, _se3_xyz_losses, _se3_quat_losses, _se3_outputs = sess.run(
                 [trainer, lstm_states, total_losses, fc_losses, se3_losses,
-                 fc_xyz_losses, fc_ypr_losses, se3_xyz_losses, se3_quat_losses],
+                 fc_xyz_losses, fc_ypr_losses, se3_xyz_losses, se3_quat_losses, se3_outputs],
                 feed_dict={
                     inputs: batch_data,
                     se3_labels: se3_ground_truth,
@@ -177,6 +180,10 @@ with tf.Session(config=None) as sess:
                 run_metadata=run_metadata
             )
             curr_lstm_states = _curr_lstm_states
+
+            if train_data_gen.curr_batch_idx == 10:
+                tools.visualize_batch(batch_data)
+                print("Hello")
 
             # for tensorboard
             if tensorboard_meta: writer.add_run_metadata(run_metadata, 'epochid=%d_batchid=%d' % (i_epoch, j_batch))

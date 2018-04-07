@@ -13,6 +13,7 @@ import sys
 import datetime
 import numpy as np
 import collections
+import matplotlib.pyplot as plt
 
 
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
@@ -159,3 +160,17 @@ class LossesSet(object):
     def write_to_disk(self, path):
         for key in self.dict:
             self.dict[key].write_to_disk(path)
+
+
+def visualize_batch(data):
+    frames = data.shape[0]
+    batch_size = data.shape[1]
+
+    fig, ax = plt.subplots(nrows=frames, ncols=batch_size)
+
+    for i in range(frames):
+        for j in range(batch_size):
+            img = np.moveaxis(data[i, j], 0, 2)
+            img = np.squeeze(img)
+            ax[i, j].imshow(img, cmap='gray')
+    fig.show()

@@ -75,7 +75,7 @@ class StatefulDataGen(object):
                 img = img.resize((self.cfg.input_width, self.cfg.input_height))
                 img = np.array(img)
                 img = np.reshape(img, [img.shape[0], img.shape[1], self.cfg.input_channels])
-                img = np.moveaxis(np.array(img), 2, 0)
+                img = np.moveaxis(img, 2, 0)
                 pose = seq_data.poses[i_img]
 
                 self.input_frames[i, j] = img
