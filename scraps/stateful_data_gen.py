@@ -1,5 +1,6 @@
 import data
-import tensorflow as tf
+import config
 
-with tf.device("/cpu:0"):
-    data.StatefulDataGen("/home/cs4li/Dev/KITTI/dataset/", ["00"])
+
+train_data_gen = data.StatefulDataGen(config.SeqTrainConfigs, "/home/cs4li/Dev/KITTI/dataset/",
+                                      ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09"])
