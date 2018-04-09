@@ -45,27 +45,27 @@ with tf.variable_scope("Optimizer"):
 # ================ LOADING DATASET ===================
 
 tools.printf("Loading training data...")
-train_data_gen = data.StatefulDataGen(cfg, "/home/cs4li/Dev/KITTI/dataset/",
-                                      ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09"])
-# train_data_gen = data.StatefulDataGen(cfg, "/home/cs4li/Dev/KITTI/dataset/", ["03"], frames=[None])
+# train_data_gen = data.StatefulDataGen(cfg, "/home/cs4li/Dev/KITTI/dataset/",
+#                                       ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09"])
+train_data_gen = data.StatefulDataGen(cfg, "/home/cs4li/Dev/KITTI/dataset/", ["06"], frames=[None])
 tools.printf("Loading validation data...")
-val_data_gen = data.StatefulDataGen(cfg, "/home/cs4li/Dev/KITTI/dataset/", ["10"], frames=[None])
+val_data_gen = data.StatefulDataGen(cfg, "/home/cs4li/Dev/KITTI/dataset/", ["06"], frames=[None])
 
 
 # for evaluating validation loss
 def calc_val_loss(sess, i_epoch, losses_log):
     curr_lstm_states = np.zeros([2, cfg.lstm_layers, cfg.batch_size, cfg.lstm_size])
+    init_poses = val_data_gen.se3_ground_truth[0, :, :]
 
-    se3_losses_history = []
     val_data_gen.next_epoch()
 
     while val_data_gen.has_next_batch():
-        init_poses, reset_state, batch_data, _, se3_ground_truth = val_data_gen.next_batch()
+        _, reset_state, batch_data, _, se3_ground_truth = val_data_gen.next_batch()
 
         curr_lstm_states = data.reset_select_lstm_state(curr_lstm_states, reset_state)
 
-        _se3_losses, _curr_lstm_states = sess.run(
-            [se3_losses, lstm_states, ],
+        _se3_outputs, _se3_losses, _curr_lstm_states = sess.run(
+            [se3_outputs, se3_losses, lstm_states, ],
             feed_dict={
                 inputs: batch_data,
                 lstm_initial_state: curr_lstm_states,
@@ -76,6 +76,7 @@ def calc_val_loss(sess, i_epoch, losses_log):
         )
 
         curr_lstm_states = _curr_lstm_states
+        init_poses = _se3_outputs[-1, :, :]
         losses_log.log(i_epoch, val_data_gen.curr_batch() - 1, _se3_losses)
 
     return losses_log
@@ -139,10 +140,14 @@ with tf.Session(config=None) as sess:
     best_val_loss = 9999999999
     alpha_set = -1
     i_epoch = 0
+
+
     for i_epoch in range(start_epoch, cfg.num_epochs):
         tools.printf("Training Epoch: %d ..." % i_epoch)
 
         curr_lstm_states = np.zeros([2, cfg.lstm_layers, cfg.batch_size, cfg.lstm_size])
+        init_poses = train_data_gen.se3_ground_truth[0, :, :]
+        # init_poses = np.array([[0, 0, 0, 1, 0, 0, 0]] * cfg.batch_size)
         start_time = time.time()
 
         if i_epoch in alpha_schedule.keys():
@@ -154,14 +159,15 @@ with tf.Session(config=None) as sess:
         while train_data_gen.has_next_batch():
             j_batch = train_data_gen.curr_batch()
             # get inputs
-            init_poses, reset_state, batch_data, \
+            _, reset_state, batch_data, \
             fc_ground_truth, se3_ground_truth = train_data_gen.next_batch()
             curr_lstm_states = data.reset_select_lstm_state(curr_lstm_states, reset_state)
+            init_poses = data.reset_select_init_pose(init_poses, reset_state)
 
             # Run training session
-            _trainer, _curr_lstm_states, _total_losses, _fc_losses, _se3_losses, \
+            _trainer, _curr_lstm_states, _se3_outputs, _total_losses, _fc_losses, _se3_losses, \
             _fc_xyz_losses, _fc_ypr_losses, _se3_xyz_losses, _se3_quat_losses = sess.run(
-                [trainer, lstm_states, total_losses, fc_losses, se3_losses,
+                [trainer, lstm_states, se3_outputs, total_losses, fc_losses, se3_losses,
                  fc_xyz_losses, fc_ypr_losses, se3_xyz_losses, se3_quat_losses],
                 feed_dict={
                     inputs: batch_data,
@@ -177,6 +183,7 @@ with tf.Session(config=None) as sess:
                 run_metadata=run_metadata
             )
             curr_lstm_states = _curr_lstm_states
+            init_poses = _se3_outputs[-1, :, :]  # take the last time step as the where the next batch starts
 
             # for tensorboard
             if tensorboard_meta: writer.add_run_metadata(run_metadata, 'epochid=%d_batchid=%d' % (i_epoch, j_batch))
